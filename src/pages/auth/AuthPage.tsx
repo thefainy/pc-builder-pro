@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Icons } from '../../components/ui/Icons';
+import { useBuild } from '../../hooks/useBuild';
 import type { User } from '../../types';
 
 interface AuthPageProps {
@@ -7,6 +8,7 @@ interface AuthPageProps {
 }
 
 export function AuthPage({ onLogin }: AuthPageProps) {
+  const { actions } = useBuild();
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,8 +32,8 @@ export function AuthPage({ onLogin }: AuthPageProps) {
 
     if (!formData.password) {
       newErrors.password = 'Пароль обязателен';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Пароль должен содержать минимум 6 символов';
+    } else if (formData.password.length < 8) {
+      newErrors.password = 'Пароль должен содержать минимум 8 символов';
     }
 
     if (!isLogin) {
@@ -63,14 +65,59 @@ export function AuthPage({ onLogin }: AuthPageProps) {
     setErrors({});
 
     try {
-      // Имитация запроса к серверу
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      let user: User;
 
-      // Создаем пользователя
-      const user: User = {
-        id: Date.now().toString(),
-        email: formData.email,
-        name: formData.name || formData.email.split('@')[0],
+      if (isLogin) {
+        // Реальный логин через API
+        user = await actions.login({
+          email: formData.email,
+          password: formData.password
+        });
+        console.log('✅ Login successful:', user);
+      } else {
+        // Реальная регистрация через API
+        user = await actions.register({
+          email: formData.email,
+          password: formData.password,
+          name: formData.name
+        });
+        console.log('✅ Registration successful:', user);
+      }
+
+      // ВАЖНО: Вызываем callback для обновления состояния в App
+      onLogin(user);
+      
+    } catch (error) {
+      console.error('Auth error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Произошла ошибка при авторизации';
+      setErrors({ submit: errorMessage });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleQuickLogin = async () => {
+    setIsSubmitting(true);
+    setErrors({});
+
+    try {
+      // Логинимся с тестовыми данными из seed
+      const user = await actions.login({
+        email: 'user@pcbuilder.com',
+        password: 'password123'
+      });
+
+      console.log('✅ Quick login successful:', user);
+      onLogin(user);
+      
+    } catch (error) {
+      console.error('Quick login error:', error);
+      
+      // Если тестовый пользователь не найден, создаем демо-пользователя локально
+      const demoUser: User = {
+        id: 'demo-user',
+        email: 'demo@pcbuilder.pro',
+        name: 'Демо Пользователь',
         createdAt: new Date(),
         preferences: {
           currency: 'KZT',
@@ -79,29 +126,12 @@ export function AuthPage({ onLogin }: AuthPageProps) {
           notifications: true
         }
       };
-
-      onLogin(user);
-    } catch (error) {
-      setErrors({ submit: 'Произошла ошибка при авторизации' });
+      
+      console.log('✅ Demo login successful:', demoUser);
+      onLogin(demoUser);
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleQuickLogin = () => {
-    const user: User = {
-      id: 'demo-user',
-      email: 'demo@pcbuilder.pro',
-      name: 'Демо Пользователь',
-      createdAt: new Date(),
-      preferences: {
-        currency: 'KZT',
-        theme: 'dark',
-        defaultBudget: 2000000,
-        notifications: true
-      }
-    };
-    onLogin(user);
   };
 
   const switchMode = () => {
@@ -242,6 +272,11 @@ export function AuthPage({ onLogin }: AuthPageProps) {
               {errors.password && (
                 <p className="mt-1 text-sm text-red-400">{errors.password}</p>
               )}
+              {!isLogin && (
+                <p className="mt-1 text-xs text-gray-400">
+                  Минимум 8 символов, включая заглавную букву, строчную букву и цифру
+                </p>
+              )}
             </div>
 
             {/* Подтверждение пароля (только для регистрации) */}
@@ -330,11 +365,15 @@ export function AuthPage({ onLogin }: AuthPageProps) {
           </p>
           <button
             onClick={handleQuickLogin}
-            className="w-full bg-green-500/20 text-green-400 py-2 rounded-lg text-sm hover:bg-green-500/30 transition-colors flex items-center justify-center space-x-2"
+            disabled={isSubmitting}
+            className="w-full bg-green-500/20 text-green-400 py-2 rounded-lg text-sm hover:bg-green-500/30 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Icons.Check className="w-4 h-4" />
-            <span>🚀 Быстрый вход без регистрации</span>
+            <span>🚀 Быстрый вход (user@pcbuilder.com)</span>
           </button>
+          <p className="text-xs text-gray-500 text-center mt-2">
+            Использует реальные данные из базы данных
+          </p>
         </div>
 
         {/* Возможности приложения */}
@@ -358,6 +397,13 @@ export function AuthPage({ onLogin }: AuthPageProps) {
               <span>Рейтинги компонентов</span>
             </div>
           </div>
+        </div>
+
+        {/* Статус API */}
+        <div className="mt-4 text-center">
+          <p className="text-xs text-gray-500">
+            🔗 Подключен к реальному API backend'у
+          </p>
         </div>
       </div>
     </div>

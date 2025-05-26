@@ -1,10 +1,11 @@
-import { useReducer, useCallback, useMemo } from 'react';
+import { useReducer, useCallback, useMemo, useEffect } from 'react';
 import type { AppState, AppAction, Component, ComponentCategory, BuildAnalysis, CompatibilityCheck } from '../types';
+import { ApiClient, convertBackendUser, convertBackendComponent } from '../utils/api';
 
 const initialState: AppState = {
   selectedComponents: {},
   budget: 2000000, // 2 млн тенге
-  currentPage: 'builder',
+  currentPage: 'auth',
   isLoggedIn: false,
   components: [],
   builds: [],
@@ -89,7 +90,56 @@ function appReducer(state: AppState, action: AppAction): AppState {
 export function useBuild() {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
-  // Вычисляемые значения
+  // ==================
+  // ИНИЦИАЛИЗАЦИЯ
+  // ==================
+
+  useEffect(() => {
+    // Проверяем сохраненную сессию при загрузке
+    const checkSavedSession = async () => {
+      const tokens = ApiClient.getSavedTokens();
+      
+      if (tokens?.accessToken) {
+        try {
+          const response = await ApiClient.getCurrentUser();
+          const user = convertBackendUser(response.data!);
+          
+          dispatch({ type: 'LOGIN', user });
+        } catch (error) {
+          console.error('Ошибка восстановления сессии:', error);
+          ApiClient.clearTokens();
+          // Остаемся на странице auth
+        }
+      }
+    };
+
+    // Загружаем компоненты из API
+    const loadComponents = async () => {
+      try {
+        console.log('🔄 Загружаем компоненты из API...');
+        const response = await ApiClient.getComponents({ limit: 100 });
+        
+        if (response.data && response.data.components) {
+          // Конвертируем backend компоненты в frontend формат
+          const convertedComponents = response.data.components.map(convertBackendComponent);
+          dispatch({ type: 'SET_COMPONENTS', components: convertedComponents });
+          console.log('✅ Загружено компонентов:', convertedComponents.length);
+        }
+      } catch (error) {
+        console.error('⚠️ Ошибка загрузки компонентов из API:', error);
+        // Оставляем пустой массив - компоненты загрузятся из констант или моков
+        console.log('📦 Используем локальные данные компонентов');
+      }
+    };
+
+    checkSavedSession();
+    loadComponents();
+  }, []);
+
+  // ==================
+  // ВЫЧИСЛЯЕМЫЕ ЗНАЧЕНИЯ
+  // ==================
+
   const totalPrice = useMemo(() => {
     return Object.values(state.selectedComponents).reduce((sum, comp) => sum + comp.price, 0);
   }, [state.selectedComponents]);
@@ -237,7 +287,101 @@ export function useBuild() {
     };
   }, [state.selectedComponents, totalPrice, checkCompatibility]);
 
-  // Действия
+  // ==================
+  // API ACTIONS
+  // ==================
+
+  const authActions = {
+    /**
+     * Реальная регистрация через API
+     */
+    register: useCallback(async (userData: {
+      email: string;
+      password: string;
+      name: string;
+    }) => {
+      try {
+        // Разделяем имя на firstName и lastName
+        const nameParts = userData.name.trim().split(' ');
+        const firstName = nameParts[0];
+        const lastName = nameParts.slice(1).join(' ') || undefined;
+        
+        // Генерируем username из email
+        const username = userData.email.split('@')[0].toLowerCase();
+
+        const response = await ApiClient.register({
+          email: userData.email,
+          username,
+          password: userData.password,
+          firstName,
+          lastName
+        });
+
+        const { user, tokens } = response.data!;
+        
+        // Сохраняем токены
+        ApiClient.saveTokens(tokens);
+        
+        // Конвертируем и логиним пользователя
+        const convertedUser = convertBackendUser(user);
+        
+        // ВАЖНО: Обновляем состояние через dispatch
+        dispatch({ type: 'LOGIN', user: convertedUser });
+        
+        return convertedUser;
+      } catch (error) {
+        console.error('Registration error:', error);
+        throw error;
+      }
+    }, []),
+
+    /**
+     * Реальный логин через API
+     */
+    login: useCallback(async (credentials: {
+      email: string;
+      password: string;
+    }) => {
+      try {
+        const response = await ApiClient.login(credentials);
+        const { user, tokens } = response.data!;
+        
+        // Сохраняем токены
+        ApiClient.saveTokens(tokens);
+        
+        // Конвертируем и логиним пользователя
+        const convertedUser = convertBackendUser(user);
+        
+        // ВАЖНО: Обновляем состояние через dispatch
+        dispatch({ type: 'LOGIN', user: convertedUser });
+        
+        return convertedUser;
+      } catch (error) {
+        console.error('Login error:', error);
+        throw error;
+      }
+    }, []),
+
+    /**
+     * Выход из системы
+     */
+    logout: useCallback(async () => {
+      try {
+        await ApiClient.logout();
+      } catch (error) {
+        console.error('Logout error:', error);
+        // Продолжаем выход даже если API недоступно
+      } finally {
+        ApiClient.clearTokens();
+        dispatch({ type: 'LOGOUT' });
+      }
+    }, [])
+  };
+
+  // ==================
+  // ОБЫЧНЫЕ ACTIONS
+  // ==================
+
   const actions = {
     addComponent: useCallback((category: string, component: Component) => {
       dispatch({ type: 'ADD_COMPONENT', category, component });
@@ -259,14 +403,6 @@ export function useBuild() {
       dispatch({ type: 'SET_PAGE', page });
     }, []),
     
-    login: useCallback((user: any) => {
-      dispatch({ type: 'LOGIN', user });
-    }, []),
-    
-    logout: useCallback(() => {
-      dispatch({ type: 'LOGOUT' });
-    }, []),
-    
     setSearch: useCallback((searchTerm: string) => {
       dispatch({ type: 'SET_SEARCH', searchTerm });
     }, []),
@@ -281,7 +417,10 @@ export function useBuild() {
     
     setComponents: useCallback((components: Component[]) => {
       dispatch({ type: 'SET_COMPONENTS', components });
-    }, [])
+    }, []),
+
+    // Добавляем auth actions
+    ...authActions
   };
 
   return {

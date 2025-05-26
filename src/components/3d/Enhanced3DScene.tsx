@@ -177,7 +177,7 @@ export function Enhanced3DScene({ selectedComponents, className = '' }: Enhanced
           // SSD/HDD
           const storageGroup = new THREE.Group();
           
-          const isNVMe = component.specs?.type?.includes('NVMe');
+          const isNVMe = String(component.specs?.type || '').includes('NVMe');
           
           if (isNVMe) {
             // NVMe SSD
