@@ -83,6 +83,7 @@ export class ApiClient {
       console.error('API Error:', error);
       throw error;
     }
+    
   }
 
   // ==================
@@ -263,6 +264,117 @@ export class ApiClient {
     averagePrice: number;
   }>> {
     return this.request('/components/stats');
+  }
+
+  // ==================
+  // BUILDS METHODS
+  // ==================
+
+  /**
+   * Получить мои сборки
+   */
+  static async getMyBuilds(page?: number, limit?: number): Promise<ApiResponse<{
+    builds: any[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  }>> {
+    const queryParams = new URLSearchParams();
+    if (page) queryParams.append('page', page.toString());
+    if (limit) queryParams.append('limit', limit.toString());
+
+    const url = `/builds/my${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    return this.request(url);
+  }
+
+  /**
+   * Получить публичные сборки
+   */
+  static async getPublicBuilds(params?: {
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: string;
+  }): Promise<ApiResponse<{
+    builds: any[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  }>> {
+    const queryParams = new URLSearchParams();
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          queryParams.append(key, value.toString());
+        }
+      });
+    }
+
+    const url = `/builds/public${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+    return this.request(url);
+  }
+
+  /**
+   * Получить сборку по ID
+   */
+  static async getBuildById(id: string): Promise<ApiResponse<any>> {
+    return this.request(`/builds/${id}`);
+  }
+
+  /**
+   * Создать новую сборку
+   */
+  static async createBuild(buildData: {
+    name: string;
+    description?: string;
+    isPublic?: boolean;
+    components: Record<string, { componentId: string; quantity: number }>;
+  }): Promise<ApiResponse<any>> {
+    return this.request('/builds', {
+      method: 'POST',
+      body: JSON.stringify(buildData),
+    });
+  }
+
+  /**
+   * Обновить сборку
+   */
+  static async updateBuild(id: string, updateData: {
+    name?: string;
+    description?: string;
+    isPublic?: boolean;
+    components?: Record<string, { componentId: string; quantity: number }>;
+  }): Promise<ApiResponse<any>> {
+    return this.request(`/builds/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updateData),
+    });
+  }
+
+  /**
+   * Удалить сборку
+   */
+  static async deleteBuild(id: string): Promise<ApiResponse<{ message: string }>> {
+    return this.request(`/builds/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Скопировать публичную сборку
+   */
+  static async copyBuild(id: string, name: string): Promise<ApiResponse<any>> {
+    return this.request(`/builds/${id}/copy`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
   }
 
   // ==================

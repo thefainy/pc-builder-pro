@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useBuild } from '../../hooks/useBuild';
 import { Icons } from '../../components/ui/Icons';
 import ComponentCard from '../../components/ui/ComponentCard';
-import Enhanced3DScene from '../../components/3d/Enhanced3DScene'; // Новая 3D сцена
+import Enhanced3DScene from '../../components/3d/Enhanced3DScene';
 import Header from '../../components/layout/Header';
+import SaveBuildModal from '../../components/ui/SaveBuildModal'; // НОВЫЙ ИМПОРТ
 import { COMPONENT_CATEGORIES, MOCK_COMPONENTS } from '../../utils/constants';
 import type { ComponentCategory, User } from '../../types';
 
@@ -25,11 +26,33 @@ export function BuilderPage({ user, onLogout }: BuilderPageProps) {
   } = useBuild();
 
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false); // НОВОЕ СОСТОЯНИЕ
+  const [isSaving, setIsSaving] = useState(false); // НОВОЕ СОСТОЯНИЕ
 
   // Инициализация компонентов
   useEffect(() => {
     actions.setComponents(MOCK_COMPONENTS);
   }, [actions]);
+
+  // НОВАЯ ФУНКЦИЯ: Обработка сохранения сборки
+  const handleSaveBuild = async (buildData: {
+    name: string;
+    description?: string;
+    isPublic: boolean;
+  }) => {
+    setIsSaving(true);
+    try {
+      await actions.saveBuild(buildData);
+      
+      // Показываем уведомление об успехе (можно добавить toast)
+      console.log('✅ Сборка сохранена успешно!');
+    } catch (error) {
+      console.error('❌ Ошибка сохранения:', error);
+      throw error; // Перебрасываем ошибку для отображения в модалке
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const getIconComponent = (iconName: string) => {
     const IconComponent = Icons[iconName as keyof typeof Icons] as React.ComponentType<{className?: string}>;
@@ -88,6 +111,22 @@ export function BuilderPage({ user, onLogout }: BuilderPageProps) {
                 </span>
               </div>
             </div>
+
+            {/* НОВАЯ КНОПКА: Сохранить сборку */}
+            {selectedComponentsCount > 0 && user && (
+              <div className="glass-card rounded-xl p-4">
+                <button
+                  onClick={() => setShowSaveModal(true)}
+                  className="w-full btn-primary flex items-center justify-center space-x-2"
+                >
+                  <Icons.Heart className="w-4 h-4" />
+                  <span>Сохранить сборку</span>
+                </button>
+                <p className="text-gray-400 text-xs text-center mt-2">
+                  Сохраните свою сборку для дальнейшего использования
+                </p>
+              </div>
+            )}
 
             {/* Анализ сборки */}
             <div className="glass-card rounded-xl p-4">
@@ -267,10 +306,16 @@ export function BuilderPage({ user, onLogout }: BuilderPageProps) {
                   <div className="text-sm text-gray-400">Общая стоимость</div>
                 </div>
                 
-                <button className="btn-primary flex items-center space-x-2">
-                  <Icons.Heart className="w-4 h-4" />
-                  <span>Сохранить сборку</span>
-                </button>
+                {/* ОБНОВЛЕННАЯ КНОПКА: Сохранить сборку */}
+                {user && (
+                  <button 
+                    onClick={() => setShowSaveModal(true)}
+                    className="btn-primary flex items-center space-x-2"
+                  >
+                    <Icons.Heart className="w-4 h-4" />
+                    <span>Сохранить сборку</span>
+                  </button>
+                )}
               </div>
             </div>
             
@@ -326,6 +371,14 @@ export function BuilderPage({ user, onLogout }: BuilderPageProps) {
           </div>
         )}
       </div>
+
+      {/* НОВЫЙ КОМПОНЕНТ: Модальное окно сохранения */}
+      <SaveBuildModal
+        isOpen={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        onSave={handleSaveBuild}
+        isLoading={isSaving}
+      />
     </div>
   );
 }

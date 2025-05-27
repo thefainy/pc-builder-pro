@@ -34,14 +34,19 @@ export interface PCBuild {
 }
 
 // Состояние приложения
+// Состояние приложения (ЕДИНСТВЕННОЕ определение)
 export interface AppState {
   selectedComponents: Record<string, Component>;
   budget: number;
-  currentPage: 'auth' | 'builder' | 'profile' | 'builds';
+  currentPage: 'auth' | 'builder' | 'profile' | 'builds' | 'build-gallery';
   isLoggedIn: boolean;
   user?: User;
   components: Component[];
   builds: PCBuild[];
+  myBuilds: PCBuild[];
+  publicBuilds: PCBuild[];
+  currentBuild: PCBuild | null;
+  buildsLoading: boolean;
   filters: ComponentFilters;
   searchTerm: string;
   activeCategory: ComponentCategory;
@@ -88,7 +93,11 @@ export type AppAction =
   | { type: 'SET_FILTERS'; filters: Partial<ComponentFilters> }
   | { type: 'SAVE_BUILD'; build: PCBuild }
   | { type: 'LOAD_BUILDS'; builds: PCBuild[] }
-  | { type: 'SET_COMPONENTS'; components: Component[] };
+  | { type: 'SET_COMPONENTS'; components: Component[] }
+  | { type: 'SET_MY_BUILDS'; builds: PCBuild[] }        // НОВОЕ
+  | { type: 'SET_PUBLIC_BUILDS'; builds: PCBuild[] }    // НОВОЕ
+  | { type: 'SET_CURRENT_BUILD'; build: PCBuild | null } // НОВОЕ
+  | { type: 'SET_BUILDS_LOADING'; loading: boolean };   // НОВОЕ
 
 // 3D модели
 export interface Component3DModel {
@@ -111,6 +120,7 @@ export interface ApiResponse<T> {
 export interface ComponentsResponse extends ApiResponse<Component[]> {}
 export interface BuildsResponse extends ApiResponse<PCBuild[]> {}
 export interface UserResponse extends ApiResponse<User> {}
+
 
 // Уведомления
 export interface Notification {
@@ -142,3 +152,48 @@ export interface BuildAnalysis {
   recommendations: string[];
   compatibility: CompatibilityCheck;
 }
+// ДОБАВЬТЕ эти типы в ваш существующий файл src/types/index.ts
+
+// Типы для сборок
+export interface PCBuild {
+  id: string;
+  name: string;
+  description?: string;
+  totalPrice: number;
+  isPublic: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  user: {
+    id: string;
+    username: string;
+    firstName?: string;
+    lastName?: string;
+  };
+  components: BuildComponent[];
+}
+
+export interface BuildComponent {
+  category: ComponentCategory;
+  component: {
+    id: string;
+    name: string;
+    brand: string;
+    model: string;
+    price: number;
+    currency: string;
+    image?: string;
+    specs: Record<string, any>;
+  };
+  quantity: number;
+}
+
+export interface BuildsListResponse {
+  builds: PCBuild[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+

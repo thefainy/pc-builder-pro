@@ -9,6 +9,10 @@ const initialState: AppState = {
   isLoggedIn: false,
   components: [],
   builds: [],
+  myBuilds: [],          // ДОБАВЛЕНО
+  publicBuilds: [],      // ДОБАВЛЕНО
+  currentBuild: null,    // ДОБАВЛЕНО
+  buildsLoading: false,  // ДОБАВЛЕНО
   filters: {
     sortBy: 'popularity',
     sortOrder: 'desc'
@@ -81,6 +85,19 @@ function appReducer(state: AppState, action: AppAction): AppState {
     
     case 'SET_COMPONENTS':
       return { ...state, components: action.components };
+    
+    // НОВЫЕ CASES
+    case 'SET_MY_BUILDS':
+      return { ...state, myBuilds: action.builds };
+    
+    case 'SET_PUBLIC_BUILDS':
+      return { ...state, publicBuilds: action.builds };
+    
+    case 'SET_CURRENT_BUILD':
+      return { ...state, currentBuild: action.build };
+    
+    case 'SET_BUILDS_LOADING':
+      return { ...state, buildsLoading: action.loading };
     
     default:
       return state;
@@ -379,6 +396,207 @@ export function useBuild() {
   };
 
   // ==================
+  // НОВЫЕ BUILDS ACTIONS
+  // ==================
+
+  const buildActions = {
+    /**
+     * Сохранить текущую сборку
+     */
+    saveBuild: useCallback(async (buildData: {
+      name: string;
+      description?: string;
+      isPublic?: boolean;
+    }) => {
+      try {
+        // Конвертируем selectedComponents в формат API
+        const components: Record<string, { componentId: string; quantity: number }> = {};
+        
+        Object.entries(state.selectedComponents).forEach(([category, component]) => {
+          components[category] = {
+            componentId: component.id,
+            quantity: 1
+          };
+        });
+
+        if (Object.keys(components).length === 0) {
+          throw new Error('Добавьте хотя бы один компонент в сборку');
+        }
+
+        const response = await ApiClient.createBuild({
+          name: buildData.name,
+          description: buildData.description,
+          isPublic: buildData.isPublic || false,
+          components
+        });
+
+        // Обновляем список сборок
+        await buildActions.loadMyBuilds();
+
+        return response.data;
+      } catch (error) {
+        console.error('Save build error:', error);
+        throw error;
+      }
+    }, [state.selectedComponents]),
+
+    /**
+     * Загрузить мои сборки
+     */
+    loadMyBuilds: useCallback(async (page: number = 1, limit: number = 10) => {
+      try {
+        dispatch({ type: 'SET_BUILDS_LOADING', loading: true });
+        
+        const response = await ApiClient.getMyBuilds(page, limit);
+        
+        dispatch({ type: 'SET_MY_BUILDS', builds: response.data?.builds || [] });
+        
+        return response.data;
+      } catch (error) {
+        console.error('Load my builds error:', error);
+        dispatch({ type: 'SET_MY_BUILDS', builds: [] });
+        throw error;
+      } finally {
+        dispatch({ type: 'SET_BUILDS_LOADING', loading: false });
+      }
+    }, []),
+
+    /**
+     * Загрузить публичные сборки
+     */
+    loadPublicBuilds: useCallback(async (params?: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: string;
+    }) => {
+      try {
+        dispatch({ type: 'SET_BUILDS_LOADING', loading: true });
+        
+        const response = await ApiClient.getPublicBuilds(params);
+        
+        dispatch({ type: 'SET_PUBLIC_BUILDS', builds: response.data?.builds || [] });
+        
+        return response.data;
+      } catch (error) {
+        console.error('Load public builds error:', error);
+        dispatch({ type: 'SET_PUBLIC_BUILDS', builds: [] });
+        throw error;
+      } finally {
+        dispatch({ type: 'SET_BUILDS_LOADING', loading: false });
+      }
+    }, []),
+
+    /**
+     * Загрузить сборку по ID
+     */
+    loadBuild: useCallback(async (id: string) => {
+      try {
+        const response = await ApiClient.getBuildById(id);
+        
+        const build = response.data;
+        dispatch({ type: 'SET_CURRENT_BUILD', build });
+        
+        return build;
+      } catch (error) {
+        console.error('Load build error:', error);
+        throw error;
+      }
+    }, []),
+
+    /**
+     * Загрузить сборку в конструктор
+     */
+    loadBuildToBuilder: useCallback(async (id: string) => {
+      try {
+        const build = await buildActions.loadBuild(id);
+        
+        // Очищаем текущую сборку
+        dispatch({ type: 'RESET_BUILD' });
+        
+        // Загружаем компоненты сборки
+        const selectedComponents: Record<string, Component> = {};
+        
+        for (const buildComponent of build.components) {
+          // Загружаем полную информацию о компоненте
+          try {
+            const componentResponse = await ApiClient.getComponentById(buildComponent.component.id);
+            const fullComponent = convertBackendComponent(componentResponse.data);
+            selectedComponents[buildComponent.category.toLowerCase()] = fullComponent;
+          } catch (componentError) {
+            console.warn(`Не удалось загрузить компонент ${buildComponent.component.id}:`, componentError);
+          }
+        }
+        
+        // Устанавливаем компоненты
+        Object.entries(selectedComponents).forEach(([category, component]) => {
+          dispatch({ type: 'ADD_COMPONENT', category, component });
+        });
+        
+        return build;
+      } catch (error) {
+        console.error('Load build to builder error:', error);
+        throw error;
+      }
+    }, []),
+
+    /**
+     * Скопировать публичную сборку
+     */
+    copyBuild: useCallback(async (id: string, name: string) => {
+      try {
+        const response = await ApiClient.copyBuild(id, name);
+        
+        // Обновляем список своих сборок
+        await buildActions.loadMyBuilds();
+        
+        return response.data;
+      } catch (error) {
+        console.error('Copy build error:', error);
+        throw error;
+      }
+    }, []),
+
+    /**
+     * Удалить сборку
+     */
+    deleteBuild: useCallback(async (id: string) => {
+      try {
+        await ApiClient.deleteBuild(id);
+        
+        // Обновляем список сборок
+        await buildActions.loadMyBuilds();
+        
+        return true;
+      } catch (error) {
+        console.error('Delete build error:', error);
+        throw error;
+      }
+    }, []),
+
+    /**
+     * Обновить сборку
+     */
+    updateBuild: useCallback(async (id: string, updateData: {
+      name?: string;
+      description?: string;
+      isPublic?: boolean;
+    }) => {
+      try {
+        const response = await ApiClient.updateBuild(id, updateData);
+        
+        // Обновляем список сборок
+        await buildActions.loadMyBuilds();
+        
+        return response.data;
+      } catch (error) {
+        console.error('Update build error:', error);
+        throw error;
+      }
+    }, [])
+  };
+
+  // ==================
   // ОБЫЧНЫЕ ACTIONS
   // ==================
 
@@ -420,7 +638,10 @@ export function useBuild() {
     }, []),
 
     // Добавляем auth actions
-    ...authActions
+    ...authActions,
+    
+    // Добавляем build actions
+    ...buildActions
   };
 
   return {
